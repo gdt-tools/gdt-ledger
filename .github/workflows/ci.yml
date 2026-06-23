@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No version: setup-zig reads minimum_zig_version from build.zig.zon.
+      - uses: mlugg/setup-zig@v2
+      - run: zig fmt --check src/ examples/ tests/ build.zig
+
+  # Every shipped target is its own job on Ubuntu: ledger is pure Zig std (no
+  # per-OS code), so zig cross-compiles (build + link) to all of them. Matrix
+  # with fail-fast: false so one target failing still reports the rest. The
+  # native x86_64-linux job runs the tests (the only place they execute); the
+  # others `zig build check` (build + link), which also catches arch-specific
+  # bugs a native-only run misses (e.g. aarch64 function-pointer alignment).
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-linux-gnu, cmd: "zig build test" }
+          - { target: aarch64-linux-gnu, cmd: "zig build check -Dtarget=aarch64-linux-gnu" }
+          - { target: aarch64-macos, cmd: "zig build check -Dtarget=aarch64-macos" }
+          - { target: x86_64-windows-msvc, cmd: "zig build check -Dtarget=x86_64-windows-msvc" }
+          - { target: aarch64-windows-msvc, cmd: "zig build check -Dtarget=aarch64-windows-msvc" }
+    name: test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+      - run: ${{ matrix.cmd }}
