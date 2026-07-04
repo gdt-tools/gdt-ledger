@@ -31,6 +31,7 @@ pub const ZoneConfig = @import("config/zone.zig");
 pub const SubzoneConfig = @import("config/subzone.zig");
 pub const Zone = @import("zone/root.zig").Zone;
 pub const scope = @import("zone/root.zig").scope;
+pub const TrackedAllocator = @import("accounting/tracked_allocator.zig").TrackedAllocator;
 pub const validateRules = policy.validateRules;
 pub const ZonedArena = @import("wrappers/arena.zig").ZonedArena;
 pub const ZonedDebug = @import("wrappers/debug.zig").ZonedDebug;
@@ -77,8 +78,6 @@ test {
 
 test "void elimination keeps disabled state out of impl" {
     if (comptime policy.default_mode != .full) return error.SkipZigTest;
-
-    const TrackedAllocator = @import("accounting/tracked_allocator.zig").TrackedAllocator;
 
     const FullTracked = TrackedAllocator(.{ .enable_stats = true, .enable_memory_limit = true });
     const MinTracked = TrackedAllocator(.{ .enable_stats = false, .enable_memory_limit = false });

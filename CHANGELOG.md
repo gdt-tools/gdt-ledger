@@ -7,6 +7,29 @@ Versions follow CalVer (`0.YYMM.patch`): each year/month is an API epoch, so a
 new month may bring a new shape. The notes here show what moved and how to
 adjust.
 
+## [0.2607.0] - 2026-07-04
+
+Additions for per-window allocation accounting (a benchmark harness handing a
+tracked allocator to a measured body). Purely additive; no existing behavior
+changes.
+
+### 🚀 Added
+
+- `resetPeak()` on the meter and `TrackedAllocator.State`: lower the peak
+  high-water to the current live-byte total, so `peakBytes` reports the maximum
+  live bytes observed since the reset rather than since creation - a per-window
+  peak (e.g. one benchmark sample). No-op when stats are compiled out. It is a
+  single-owner window boundary: the caller must have no concurrent allocation in
+  flight on the meter across the reset (the peak is lowered without an atomic
+  read-modify-write).
+- `TrackedAllocator` re-exported from the public root. The metering allocator
+  adapter can now be instantiated directly (`ledger.TrackedAllocator(config)`)
+  for callers that want the `State`/`Promoted` accounting without a named zone.
+
+### 📦 Compatibility
+
+- Requires Zig 0.16.0 or newer. Zero dependencies.
+
 ## [0.2606.0] - 2026-06-23
 
 Initial public release.

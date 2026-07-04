@@ -165,6 +165,14 @@ pub fn TrackedAllocator(comptime config: TrackedConfig) type {
                 self.meter.setCurrentBytes(current);
             }
 
+            /// Lower the peak high-water to the current live-byte total, so a
+            /// later `peakBytes` reflects only allocations after this call. For
+            /// per-window peak measurement on a single-owner tracker. No-op when
+            /// stats are compiled out.
+            pub fn resetPeak(self: *StateSelf) void {
+                self.meter.resetPeak();
+            }
+
             pub fn incrementAllocationCount(self: *StateSelf) void {
                 self.meter.incrementAllocationCount();
             }
@@ -457,6 +465,28 @@ test "multi-threaded stress -- stats consistent" {
     try std.testing.expect(state.peakBytes() <= thread_count * allocs_per_thread * alloc_size);
     try std.testing.expectEqual(@as(usize, thread_count * allocs_per_thread), state.allocationCount());
     try std.testing.expectEqual(@as(usize, thread_count * allocs_per_thread), state.deallocationCount());
+}
+
+test "resetPeak isolates a per-window peak" {
+    const Tracked = TrackedAllocator(.{});
+    var state: Tracked.State = .{};
+    var promoted = state.promote(std.testing.allocator);
+    const ally = promoted.allocator();
+
+    // Window A: grow to 1000 live, then free it all.
+    const a = try ally.alloc(u8, 1000);
+    try std.testing.expectEqual(@as(usize, 1000), state.peakBytes());
+    ally.free(a);
+    try std.testing.expectEqual(@as(usize, 0), state.currentBytes());
+
+    // Reset drops the high-water to the current live bytes (0 here).
+    state.resetPeak();
+    try std.testing.expectEqual(@as(usize, 0), state.peakBytes());
+
+    // Window B: a smaller peak is not polluted by A's 1000.
+    const b = try ally.alloc(u8, 200);
+    try std.testing.expectEqual(@as(usize, 200), state.peakBytes());
+    ally.free(b);
 }
 
 test "deallocation count tracks frees" {

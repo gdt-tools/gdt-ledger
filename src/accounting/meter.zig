@@ -115,6 +115,24 @@ pub fn Meter(comptime caps: Capabilities, comptime thread_safe: bool) type {
             }
         }
 
+        /// Lower the peak high-water to the current live-byte total. After this
+        /// call `peakBytes` reports the maximum live bytes observed since the
+        /// reset, not since the meter was created -- the basis for a per-window
+        /// peak (e.g. one benchmark sample). No-op when stats are compiled out.
+        ///
+        /// NOTE(atomics): the reset reads current and stores peak without a
+        /// single RMW, so the caller must own the meter across the reset -- no
+        /// concurrent allocation may be in flight on it at the window boundary.
+        pub fn resetPeak(self: *Self) void {
+            if (comptime !caps.stats) return;
+
+            if (is_atomic) {
+                self.peak_bytes.store(self.current_bytes.load(.monotonic), .monotonic);
+            } else {
+                self.peak_bytes = self.current_bytes;
+            }
+        }
+
         /// Bump the cumulative allocation count without touching byte totals,
         /// for wrappers that count allocations separately from byte commits.
         pub fn incrementAllocationCount(self: *Self) void {
@@ -302,6 +320,24 @@ test "hardcap reservation treats usize overflow as over limit" {
     meter.setMemoryLimit(std.math.maxInt(usize));
     try std.testing.expect(meter.tryReserve(std.math.maxInt(usize)) != null);
     try std.testing.expect(meter.tryReserve(1) == null);
+}
+
+test "resetPeak lowers the high-water to current live bytes" {
+    const Metered = Meter(.{
+        .stats = true,
+        .hardcap = false,
+        .frames = false,
+        .lifecycle = false,
+        .runtime_export = false,
+    }, false);
+    var meter: Metered = .{};
+    meter.commitAlloc(1000, 1000); // current=1000, peak=1000
+    meter.commitFree(400); // current=600, peak still 1000
+    try std.testing.expectEqual(@as(usize, 1000), meter.peakBytes());
+
+    meter.resetPeak(); // peak := current
+    try std.testing.expectEqual(@as(usize, 600), meter.peakBytes());
+    try std.testing.expectEqual(@as(usize, 600), meter.currentBytes());
 }
 
 test "disabled meter is zero-sized and reports zero" {
